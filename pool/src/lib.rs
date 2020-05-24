@@ -6,15 +6,26 @@ use std::sync::mpsc;
 /// Job to be performed by the workers.
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
+/// Server message.
+enum Message {
+  NewJob(Job),
+  Terminate,
+}
+
 /// Thread pool of the server.
 pub struct ThreadPool {
   workers: Vec<Worker>,
-  sender: mpsc::Sender<Job>,
+  sender: mpsc::Sender<Message>,
 }
 
 impl Drop for ThreadPool {
   /// Shutdown all workers when the job is done.
   fn drop(&mut self) {
+    // Print generatl shutdown log
+    println!("Sending terminate message to all workers.");
+    // Notify all workers about the shutdown
+    for _ in &self.workers { self.sender.send(Message::Terminate).unwrap(); }
+    // Shutdown all workers
     for worker in &mut self.workers {
       // Print shutdown log
       println!("Shutting down worker {}", worker.id);
@@ -47,12 +58,18 @@ impl ThreadPool {
     ThreadPool { workers, sender }
   }
 
-  /// Runs the thread pool.
+  /// Run the thread pool.
+  ///
+  /// The job to be performed by the workers.
+  ///
+  /// # Panics
+  ///
+  /// The `execute` function will panic if the data will never be received.
   pub fn execute<F>(&self, f: F) where F: FnOnce() + Send + 'static {
     // Turn the function into a job
     let job = Box::new(f);
     // Create the sender with the job
-    self.sender.send(job).unwrap();
+    self.sender.send(Message::NewJob(job)).unwrap();
   }
 }
 
@@ -64,15 +81,24 @@ struct Worker {
 
 impl Worker {
   /// Create a new worker with the ID `id`.
-  fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
+  fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
     // Spwan the worker's thread that runs receiver.
     let thread = Some(thread::spawn(move || loop {
-      // Get the job
-      let job = receiver.lock().unwrap().recv().unwrap();
-      // Print runnning log
-      println!("Worker {} got a job; executing.", id);
-      // Perform the job
-      job();
+      // Get the reveiver message
+      let message = receiver.lock().unwrap().recv().unwrap();
+      // Check reveiver message
+      match message {
+        // Start the worker's job
+        Message::NewJob(job) => {
+          println!("Worker {} got a job; executing.", id);
+          job();
+        }
+        // Stop the worker's job
+        Message::Terminate => {
+          println!("Worker {} was told to terminate.", id);
+          break;
+        }
+      }
     }));
     // Return the new worker
     Worker { id, thread }
