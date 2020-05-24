@@ -12,6 +12,18 @@ pub struct ThreadPool {
   sender: mpsc::Sender<Job>,
 }
 
+impl Drop for ThreadPool {
+  /// Shutdown all workers when the job is done.
+  fn drop(&mut self) {
+    for worker in &mut self.workers {
+      // Print shutdown log
+      println!("Shutting down worker {}", worker.id);
+      // Shutdown the worker
+      if let Some(thread) = worker.thread.take() { thread.join().unwrap(); }
+    }
+  }
+}
+
 impl ThreadPool {
   /// Create a new ThreadPool.
   ///
@@ -47,21 +59,21 @@ impl ThreadPool {
 /// Worker of the server.
 struct Worker {
   id: usize,
-  thread: thread::JoinHandle<()>,
+  thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
-  /// Creates a new worker with the ID `id`.
+  /// Create a new worker with the ID `id`.
   fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
     // Spwan the worker's thread that runs receiver.
-    let thread = thread::spawn(move || loop {
+    let thread = Some(thread::spawn(move || loop {
       // Get the job
       let job = receiver.lock().unwrap().recv().unwrap();
-      // Print log
+      // Print runnning log
       println!("Worker {} got a job; executing.", id);
       // Perform the job
       job();
-    });
+    }));
     // Return the new worker
     Worker { id, thread }
   }

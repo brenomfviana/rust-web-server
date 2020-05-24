@@ -23,7 +23,7 @@ fn main() {
   } else { panic!("The server is not allowed to use this IP and Port."); }
 }
 
-/// Handles the server connection.
+/// Handle the server connection.
 fn handle_connection(mut stream: TcpStream) {
   // Read request
   let mut buffer = [0; 512];
