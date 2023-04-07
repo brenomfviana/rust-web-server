@@ -1,2 +1,2 @@
 # rust-web-server
-Rust Book Final Project: Building a Multithreaded Web Server
+Rust Book Final Project: Building a Multithreaded Web Server.
